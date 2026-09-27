@@ -1,0 +1,21 @@
+name: hmt-watch
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # every 10 min (GitHub may delay runs a few minutes)
+  workflow_dispatch:
+    inputs:
+      test:
+        description: 'Send a test push instead of checking stock'
+        type: boolean
+        default: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node watch.mjs ${{ inputs.test && '--notify-test' || '' }}
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
