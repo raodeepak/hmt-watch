@@ -18,13 +18,30 @@ export function parseStock(html, id) {
   const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
   if (!m) throw new Error('no __NEXT_DATA__ in page');
   const pp = JSON.parse(m[1])?.props?.pageProps;
-  const v = pp?.catalog?.variantsInfo?.find(x => x.sku === id) ?? pp?.catalog?.variantsInfo?.[0];
-  const a = v?.attributes;
-  const av = a?.buyingOptions?.singlePurchase?.availability;
-  if (!a || !av) throw new Error('stock fields not found (page layout changed?)');
+  if (!pp) throw new Error('no pageProps');
+  // Find the object for this SKU that carries an availability block, wherever HMT
+  // nests it (they renamed variantsInfo/attributes -> variantsDetails/variantAttributes
+  // in Oct 2026). Search catalog first, then the whole pageProps.
+  const findAvail = (o, depth = 0) => {
+    if (!o || typeof o !== 'object' || depth > 6) return null;
+    if (o.singlePurchase?.availability) return o.singlePurchase.availability;
+    for (const k in o) { const r = findAvail(o[k], depth + 1); if (r) return r; }
+    return null;
+  };
+  const findSku = (o, depth = 0) => {
+    if (!o || typeof o !== 'object' || depth > 8) return null;
+    if (o.sku === id && findAvail(o)) return o;
+    for (const k in o) { const r = findSku(o[k], depth + 1); if (r) return r; }
+    return null;
+  };
+  const v = findSku(pp.catalog) ?? findSku(pp);
+  if (!v) throw new Error('stock fields not found (page layout changed?)');
+  const av = findAvail(v);
+  const a = v.variantAttributes ?? v.attributes ?? {};
+  const price = a.price?.sellingPrice ?? a.price?.discountedPrice ?? a.price?.mrp;
   return {
-    name: a.name,
-    price: a.price?.discountedPrice ?? a.price?.mrp,
+    name: a.name ?? pp.catalog?.name ?? id,
+    price,
     inStock: av.inStock === true || av.isBuyable === true,
   };
 }
